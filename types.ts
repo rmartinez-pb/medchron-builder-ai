@@ -26,6 +26,8 @@ export interface MedicalEntity {
   details: string;
   confidence?: number;
   umlsEntities?: string[]; // New field for UMLS based entities
+  pageNumber?: number; // The page number where this event occurs
+  quote?: string; // Verbatim text from the document supporting this event
 }
 
 export interface ProcessedDocument {

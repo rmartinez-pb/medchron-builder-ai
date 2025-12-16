@@ -18,7 +18,3 @@ View your app in AI Studio: https://ai.studio/apps/drive/1McxByqT96hkdIXgN1BkE93
 2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
 3. Run the app:
    `npm run dev`
-
-
-npm ls react-server-dom-webpack react-server-dom-parcel react-server-dom-turbopack
-npm ls react react-dom react-server-dom-webpack react-server-dom-parcel react-server-dom-turbopack vitejs/plugin-rsc

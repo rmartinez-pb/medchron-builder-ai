@@ -27,7 +27,7 @@ export const fileToGenerativePart = async (file: File): Promise<{ inlineData: { 
 
 /**
  * Step 1: Generate a detailed prose description of the document.
- * Uses gemini-3-pro-preview for complex reasoning and understanding of medical docs.
+ * Uses gemini-2.5-flash (as requested) for understanding of medical docs.
  */
 export const generateDocumentProse = async (file: File): Promise<string> => {
   const filePart = await fileToGenerativePart(file);
@@ -36,6 +36,11 @@ export const generateDocumentProse = async (file: File): Promise<string> => {
     You are an expert medical physician consultant. 
     Analyze the attached medical document carefully.
     Create a detailed, objective prose description of the document's content. 
+    
+    CRITICAL INSTRUCTION: You MUST cite the page number for every fact you mention. 
+    Use the format [Page X] at the start of sentences or after key facts.
+    If the document is a single page/image, use [Page 1].
+
     Focus specifically on:
     1. Dates of service.
     2. Patient symptoms and complaints.
@@ -106,11 +111,16 @@ export const extractEntitiesFromProse = async (prose: string): Promise<MedicalEn
     Analyze the following medical prose description. 
     Disentangle the text into individual fact-based entities (events) for a medical chronology.
     
+    The prose contains page citations like [Page X]. You must extract this page number for each event.
+
     For each event, extract:
-    - Date (MM-DD-YYYY format if possible)
+    - Date (YYYY-MM-DD format if possible, or original text)
     - Time (if available)
+    - Category (Diagnosis, Treatment, Symptom, Lab Result, Medication, Administrative, Other)
     - Summary (Brief title)
     - Details (Full description from the prose)
+    - Page Number (Integer, extracted from [Page X] markers)
+    - Quote (A short, verbatim text snippet from the description that supports this fact)
     - umlsEntities (A list of UMLS-based tags extracted from the details, such as "Pain", "Patients", "Diagnosis", "Provider", etc.)
 
     Here are examples of how to map text to 'umlsEntities' based on UMLS standards:
@@ -140,6 +150,8 @@ export const extractEntitiesFromProse = async (prose: string): Promise<MedicalEn
         },
         summary: { type: Type.STRING, description: "A concise 3-5 word title for the event." },
         details: { type: Type.STRING, description: "Detailed description of the event extracted from the text." },
+        pageNumber: { type: Type.INTEGER, description: "The page number (e.g. 1, 2) where this event is located." },
+        quote: { type: Type.STRING, description: "A short verbatim text snippet supporting the event." },
         umlsEntities: { 
           type: Type.ARRAY, 
           items: { type: Type.STRING },

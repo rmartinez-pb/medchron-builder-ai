@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from 'react';
 import { TimelineEvent, EntityCategory } from '../types';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 interface TimelineViewProps {
   events: TimelineEvent[];
@@ -18,31 +17,11 @@ const categoryColors: Record<EntityCategory, string> = {
 };
 
 export const TimelineView: React.FC<TimelineViewProps> = ({ events, onEventClick }) => {
-  const [filter, setFilter] = useState<EntityCategory | 'ALL'>('ALL');
   const [showJson, setShowJson] = useState(false);
 
   // Sort events by date
   const sortedEvents = useMemo(() => {
     return [...events].sort((a, b) => a.date.localeCompare(b.date));
-  }, [events]);
-
-  const filteredEvents = useMemo(() => {
-    if (filter === 'ALL') return sortedEvents;
-    return sortedEvents.filter(e => e.category === filter);
-  }, [sortedEvents, filter]);
-
-  // Prepare chart data (events per category)
-  const chartData = useMemo(() => {
-    const counts = events.reduce((acc, curr) => {
-      acc[curr.category] = (acc[curr.category] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
-    
-    return Object.values(EntityCategory).map(cat => ({
-      name: cat,
-      count: counts[cat] || 0,
-      color: categoryColors[cat]
-    })).filter(d => d.count > 0);
   }, [events]);
 
   if (events.length === 0) {
@@ -54,7 +33,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ events, onEventClick
   }
 
   return (
-    <div className="flex flex-col h-full space-y-6">
+    <div className="flex flex-col h-full space-y-4">
       
       {/* Controls Header */}
       <div className="flex justify-between items-center mb-2">
@@ -80,51 +59,9 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ events, onEventClick
         </div>
       ) : (
         <>
-          {/* Stats / Chart */}
-          <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex-none">
-             <div className="h-40 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={chartData} layout="vertical">
-                     <XAxis type="number" hide />
-                     <YAxis dataKey="name" type="category" width={100} tick={{fontSize: 12}} />
-                     <Tooltip cursor={{fill: 'transparent'}} />
-                     <Bar dataKey="count" radius={[0, 4, 4, 0]}>
-                        {chartData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                     </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-             </div>
-          </div>
-
-          {/* Filters */}
-          <div className="flex space-x-2 overflow-x-auto pb-2 flex-none">
-            <button 
-              onClick={() => setFilter('ALL')}
-              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${filter === 'ALL' ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 border hover:bg-slate-50'}`}
-            >
-              All
-            </button>
-            {Object.values(EntityCategory).map(cat => (
-              <button
-                key={cat}
-                onClick={() => setFilter(cat)}
-                className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors border ${
-                  filter === cat 
-                    ? 'text-white border-transparent' 
-                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                }`}
-                style={{ backgroundColor: filter === cat ? categoryColors[cat] : undefined }}
-              >
-                {cat}
-              </button>
-            ))}
-          </div>
-
           {/* List */}
           <div className="flex-1 overflow-y-auto pr-2 space-y-4">
-            {filteredEvents.map((event) => (
+            {sortedEvents.map((event) => (
               <div key={event.id} className="flex group relative pl-6 pb-6 border-l-2 border-slate-200 last:border-l-0 last:pb-0">
                 {/* Dot */}
                 <div 
@@ -183,8 +120,8 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ events, onEventClick
                 </div>
               </div>
             ))}
-            {filteredEvents.length === 0 && (
-              <p className="text-center text-slate-400 text-sm py-8">No events found for this category.</p>
+            {sortedEvents.length === 0 && (
+              <p className="text-center text-slate-400 text-sm py-8">No events found.</p>
             )}
           </div>
         </>
