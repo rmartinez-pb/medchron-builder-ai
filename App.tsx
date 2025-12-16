@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { Uploader } from './components/Uploader';
 import { TimelineView } from './components/TimelineView';
 import { Spinner } from './components/Spinner';
-import { ProcessedDocument, ProcessingStatus, TimelineEvent } from './types';
+import { ProcessedDocument, ProcessingStatus, TimelineEvent, MedicalFact, ViewerItem } from './types';
 import { generateDocumentProse, extractEntitiesFromProse } from './services/geminiService';
 import { exportChronologyToDocx } from './services/docxService';
 
@@ -15,7 +15,7 @@ const App: React.FC = () => {
   const [isExporting, setIsExporting] = useState(false);
   
   // Document Viewer State
-  const [viewingEvent, setViewingEvent] = useState<TimelineEvent | null>(null);
+  const [viewingItem, setViewingItem] = useState<ViewerItem | null>(null);
   const [viewingDocUrl, setViewingDocUrl] = useState<string | null>(null);
 
   // Derived state: All events from all completed documents
@@ -95,7 +95,7 @@ const App: React.FC = () => {
     }
     setDocuments([]);
     setSelectedDocId(null);
-    setViewingEvent(null);
+    setViewingItem(null);
   };
 
   const handleDeleteDocument = (e: React.MouseEvent, docId: string) => {
@@ -108,19 +108,28 @@ const App: React.FC = () => {
     }
   };
 
-  const handleEventClick = (event: TimelineEvent) => {
+  const handleFactClick = (fact: MedicalFact, parentEvent: TimelineEvent) => {
     // Find the original document file
-    const sourceDoc = documents.find(d => d.id === event.sourceDocumentId);
+    const sourceDoc = documents.find(d => d.id === parentEvent.sourceDocumentId);
     if (sourceDoc && sourceDoc.rawFile) {
       if (viewingDocUrl) URL.revokeObjectURL(viewingDocUrl);
       const url = URL.createObjectURL(sourceDoc.rawFile);
       setViewingDocUrl(url);
-      setViewingEvent(event);
+      
+      setViewingItem({
+        date: parentEvent.date,
+        summary: fact.detail,
+        category: fact.category,
+        sourceDocumentId: parentEvent.sourceDocumentId,
+        sourceDocumentName: parentEvent.sourceDocumentName,
+        pageNumber: fact.pageNumber,
+        quote: fact.quote
+      });
     }
   };
 
   const closeViewer = () => {
-    setViewingEvent(null);
+    setViewingItem(null);
     if (viewingDocUrl) {
       URL.revokeObjectURL(viewingDocUrl);
       setViewingDocUrl(null);
@@ -181,7 +190,6 @@ const App: React.FC = () => {
             </div>
             <div>
               <h1 className="text-xl font-bold text-slate-800 tracking-tight leading-none">MedChrons Builder</h1>
-              {/* <span className="text-[10px] text-slate-400 font-medium">AI Case Builder</span> */}
             </div>
           </div>
           {documents.length > 0 && (
@@ -266,8 +274,8 @@ const App: React.FC = () => {
            <div className="flex items-center space-x-4">
               <div className="text-sm text-slate-500">
                   {selectedDocument 
-                    ? `${selectedDocument.entities?.length || 0} Events` 
-                    : `${allEvents.length} Events Total`
+                    ? `${(selectedDocument.entities || []).reduce((acc, e) => acc + e.facts.length, 0)} Facts` 
+                    : `${allEvents.reduce((acc, e) => acc + e.facts.length, 0)} Facts Total`
                   }
               </div>
               {allEvents.length > 0 && (
@@ -299,34 +307,19 @@ const App: React.FC = () => {
            {selectedDocument ? (
              // Single Document Detail View
              <div className="h-full flex flex-col md:flex-row gap-6">
-                {/* Prose Column */}
-                <div className="flex-1 bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
-                  <div className="p-4 border-b border-slate-100 bg-slate-50 font-medium text-slate-700 flex justify-between items-center">
-                    <span>AI Prose Summary</span>
-                    <button onClick={() => setSelectedDocId(null)} className="text-xs text-blue-600 hover:underline">View Master Timeline</button>
-                  </div>
-                  <div className="p-6 overflow-y-auto leading-relaxed text-slate-700 text-sm">
-                     {selectedDocument.proseDescription ? (
-                       <div className="whitespace-pre-wrap prose prose-sm max-w-none">
-                         {selectedDocument.proseDescription}
-                       </div>
-                     ) : (
-                       <div className="flex items-center justify-center h-40 text-slate-400 italic">
-                         {selectedDocument.status === ProcessingStatus.ERROR ? 'Analysis failed.' : 'Analysis pending...'}
-                       </div>
-                     )}
-                  </div>
-                </div>
                 
-                {/* Extracted Entities for this Doc */}
+                {/* Extracted Entities for this Doc (Full Width if desired, or split) */}
+                {/* For better focus on the timeline, let's make it full width or split based on prose necessity */}
                 <div className="flex-1 bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
-                   <div className="p-4 border-b border-slate-100 bg-slate-50 font-medium text-slate-700">
-                    Extracted Facts ({selectedDocument.entities?.length || 0})
+                   <div className="p-4 border-b border-slate-100 bg-slate-50 font-medium text-slate-700 flex justify-between">
+                    <span>Chronology</span>
+                    <button onClick={() => setSelectedDocId(null)} className="text-xs text-blue-600 hover:underline">View Master Timeline</button>
                    </div>
                    <div className="flex-1 overflow-hidden p-4">
                       <TimelineView 
                         events={(selectedDocument.entities || []).map(e => ({...e, sourceDocumentId: selectedDocument.id, sourceDocumentName: selectedDocument.name, id: uuidv4()}))} 
-                        onEventClick={handleEventClick}
+                        onFactClick={handleFactClick}
+                        prose={selectedDocument.proseDescription}
                       />
                    </div>
                 </div>
@@ -339,28 +332,28 @@ const App: React.FC = () => {
                   <span className="text-xs font-normal text-slate-400">Events are sorted chronologically across all case documents</span>
                 </div>
                 <div className="flex-1 p-6 overflow-hidden">
-                   <TimelineView events={allEvents} onEventClick={handleEventClick} />
+                   <TimelineView events={allEvents} onFactClick={handleFactClick} />
                 </div>
              </div>
            )}
         </div>
 
         {/* Document Viewer Side Panel */}
-        {viewingEvent && viewingDocUrl && (
+        {viewingItem && viewingDocUrl && (
           <div className="absolute inset-y-0 right-0 w-1/2 bg-white shadow-2xl border-l border-slate-200 z-50 flex flex-col animate-[slideIn_0.3s_ease-out]">
             {/* Panel Header */}
             <div className="p-4 border-b border-slate-200 flex justify-between items-start bg-slate-50">
               <div>
                 <div className="flex items-center space-x-2 mb-1">
-                   <span className="text-xs font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-700 uppercase">{viewingEvent.category}</span>
-                   <span className="text-xs text-slate-500">{viewingEvent.date}</span>
+                   <span className="text-xs font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-700 uppercase">{viewingItem.category}</span>
+                   <span className="text-xs text-slate-500">{viewingItem.date}</span>
                 </div>
-                <h3 className="font-semibold text-slate-800 text-lg leading-tight">{viewingEvent.summary}</h3>
+                <h3 className="font-semibold text-slate-800 text-md leading-tight">{viewingItem.summary}</h3>
                 <div className="text-xs text-slate-500 mt-1 flex items-center">
                    <svg className="w-3 h-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                    </svg>
-                   {viewingEvent.sourceDocumentName} {viewingEvent.pageNumber && ` • Page ${viewingEvent.pageNumber}`}
+                   {viewingItem.sourceDocumentName} {viewingItem.pageNumber && ` • Page ${viewingItem.pageNumber}`}
                 </div>
               </div>
               <button onClick={closeViewer} className="text-slate-400 hover:text-slate-700 p-1 rounded hover:bg-slate-200">
@@ -371,20 +364,20 @@ const App: React.FC = () => {
             </div>
 
             {/* Verbatim Quote Section */}
-            {viewingEvent.quote && (
-              <div className="p-4 bg-yellow-50 border-b border-yellow-100">
+            {viewingItem.quote && (
+              <div className="p-4 bg-yellow-50 border-b border-yellow-100 flex-shrink-0">
                 <p className="text-xs font-bold text-yellow-700 uppercase mb-1">Verbatim Quote</p>
                 <p className="text-sm text-slate-700 italic border-l-4 border-yellow-300 pl-3 py-1">
-                  "{viewingEvent.quote}"
+                  "{viewingItem.quote}"
                 </p>
               </div>
             )}
 
             {/* Document Iframe */}
             <div className="flex-1 bg-slate-100 relative overflow-hidden">
-               {viewingEvent.sourceDocumentName.toLowerCase().endsWith('.pdf') ? (
+               {viewingItem.sourceDocumentName.toLowerCase().endsWith('.pdf') ? (
                  <iframe 
-                   src={`${viewingDocUrl}#page=${viewingEvent.pageNumber || 1}`}
+                   src={`${viewingDocUrl}#page=${viewingItem.pageNumber || 1}`}
                    className="w-full h-full"
                    title="Document Viewer"
                  />

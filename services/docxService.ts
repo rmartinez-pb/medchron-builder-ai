@@ -6,7 +6,8 @@ export const exportChronologyToDocx = async (events: TimelineEvent[], title: str
   // Sort events by date
   const sortedEvents = [...events].sort((a, b) => a.date.localeCompare(b.date));
 
-  const tableRows = [
+  // Flatten the grouped structure into rows for the table
+  const tableRows: TableRow[] = [
     // Header Row
     new TableRow({
       tableHeader: true,
@@ -22,13 +23,13 @@ export const exportChronologyToDocx = async (events: TimelineEvent[], title: str
           shading: { fill: "E0F2FE" },
         }),
         new TableCell({
-          width: { size: 20, type: WidthType.PERCENTAGE },
-          children: [new Paragraph({ text: "Event", style: "TableHeader" })],
+          width: { size: 40, type: WidthType.PERCENTAGE },
+          children: [new Paragraph({ text: "Event Details", style: "TableHeader" })],
           shading: { fill: "E0F2FE" },
         }),
         new TableCell({
-          width: { size: 35, type: WidthType.PERCENTAGE },
-          children: [new Paragraph({ text: "Details", style: "TableHeader" })],
+          width: { size: 15, type: WidthType.PERCENTAGE },
+          children: [new Paragraph({ text: "Page Ref", style: "TableHeader" })],
           shading: { fill: "E0F2FE" },
         }),
         new TableCell({
@@ -38,32 +39,42 @@ export const exportChronologyToDocx = async (events: TimelineEvent[], title: str
         }),
       ],
     }),
-    // Data Rows
-    ...sortedEvents.map((event) => {
-      return new TableRow({
-        children: [
-          new TableCell({
-            children: [
-              new Paragraph({ text: event.date, style: "TableCell" }),
-              ...(event.time ? [new Paragraph({ text: event.time, style: "TableCellSmall" })] : [])
-            ],
-          }),
-          new TableCell({
-            children: [new Paragraph({ text: event.category, style: "TableCell" })],
-          }),
-          new TableCell({
-            children: [new Paragraph({ text: event.summary, style: "TableCellBold" })],
-          }),
-          new TableCell({
-            children: [new Paragraph({ text: event.details, style: "TableCell" })],
-          }),
-          new TableCell({
-            children: [new Paragraph({ text: event.sourceDocumentName, style: "TableCellSmall" })],
-          }),
-        ],
-      });
-    }),
   ];
+
+  sortedEvents.forEach((group) => {
+    // Add a section header row for the date summary? 
+    // Or just list the facts. Let's list the facts and use the date column.
+    
+    group.facts.forEach((fact) => {
+      tableRows.push(
+        new TableRow({
+          children: [
+            new TableCell({
+              children: [
+                new Paragraph({ text: group.date, style: "TableCellBold" }),
+                ...(fact.time ? [new Paragraph({ text: fact.time, style: "TableCellSmall" })] : [])
+              ],
+            }),
+            new TableCell({
+              children: [new Paragraph({ text: fact.category, style: "TableCell" })],
+            }),
+            new TableCell({
+              children: [
+                new Paragraph({ text: fact.detail, style: "TableCell" }),
+                // Add group summary as context if needed, or keep it clean
+              ],
+            }),
+            new TableCell({
+              children: [new Paragraph({ text: fact.pageNumber ? `Pg ${fact.pageNumber}` : "-", style: "TableCellSmall" })],
+            }),
+            new TableCell({
+              children: [new Paragraph({ text: group.sourceDocumentName, style: "TableCellSmall" })],
+            }),
+          ],
+        })
+      );
+    });
+  });
 
   const doc = new Document({
     styles: {

@@ -27,7 +27,6 @@ export const fileToGenerativePart = async (file: File): Promise<{ inlineData: { 
 
 /**
  * Step 1: Generate a detailed prose description of the document.
- * Uses gemini-2.5-flash (as requested) for understanding of medical docs.
  */
 export const generateDocumentProse = async (file: File): Promise<string> => {
   const filePart = await fileToGenerativePart(file);
@@ -56,13 +55,12 @@ export const generateDocumentProse = async (file: File): Promise<string> => {
 
   try {
     const response = await ai.models.generateContent({
-      // model: 'gemini-3-pro-preview',
       model: 'gemini-2.5-flash',
       contents: {
         parts: [filePart, { text: prompt }]
       },
       config: {
-        thinkingConfig: { thinkingBudget: 2048 }, // Enable thinking for deeper analysis of the image/pdf
+        thinkingConfig: { thinkingBudget: 2048 }, 
       }
     });
 
@@ -75,58 +73,35 @@ export const generateDocumentProse = async (file: File): Promise<string> => {
 
 /**
  * Step 2: Disentangle facts from the prose into a JSON schema.
- * Uses gemini-2.5-flash for structured data extraction.
+ * Groups facts by date.
  */
 export const extractEntitiesFromProse = async (prose: string): Promise<MedicalEntity[]> => {
-  const umlsExamples = `
-    [
-      {
-        "text": "The patient reports severe pain for the past week; diagnosis is urinary tract infection, and a physical examination was performed during the visit.",
-        "entities": ["Patients", "Pain", "week", "Diagnosis", "Urinary tract infection", "Physical Examination", "Visit", "Records", "Medical History", "Pharmaceutical Preparations"]
-      },
-      {
-        "text": "During today’s visit, the provider reviewed the patient’s medical history and records and ordered magnetic resonance imaging for persistent pain.",
-        "entities": ["Patients", "Visit", "Provider", "today", "Medical History", "Records", "Magnetic Resonance Imaging", "Pain", "Diagnosis", "Physical Examination"]
-      },
-      {
-        "text": "Diagnosis: urinary tract infection. The provider recommended pharmaceutical preparations and documented the evaluation after a physical examination.",
-        "entities": ["Diagnosis", "Urinary tract infection", "Provider", "Pharmaceutical Preparations", "Physical Examination", "Evaluation", "Records", "Patients", "Visit", "Medical History"]
-      },
-      {
-        "text": "The patient’s pain has continued for a week; the provider documented the visit in the records and updated the medical history after examination.",
-        "entities": ["Patients", "Pain", "week", "Provider", "Visit", "Records", "Medical History", "Physical Examination", "Diagnosis", "Pharmaceutical Preparations"]
-      },
-      {
-        "text": "At the visit, a physical examination was completed and the diagnosis was recorded; magnetic resonance imaging was requested to evaluate ongoing pain.",
-        "entities": ["Visit", "Physical Examination", "Diagnosis", "Records", "Magnetic Resonance Imaging", "Evaluation", "Pain", "Patients", "Provider", "Medical History"]
-      },
-      {
-        "text": "The provider reviewed records and medical history and noted a urinary tract infection diagnosis; the patient reports pain starting a week ago.",
-        "entities": ["Provider", "Records", "Medical History", "Urinary tract infection", "Diagnosis", "Patients", "Pain", "week", "Visit", "Physical Examination"]
-      }
-    ]
-  `;
-
+  
   const prompt = `
     Analyze the following medical prose description. 
-    Disentangle the text into individual fact-based entities (events) for a medical chronology.
+    Create a detailed Medical Chronology.
     
-    The prose contains page citations like [Page X]. You must extract this page number for each event.
+    CRITICAL: You must GROUP all events and facts by DATE.
+    For each unique date found in the text, create a single entry.
+    Inside that entry, provide a list of specific facts/events as bullet points.
 
-    For each event, extract:
-    - Date (YYYY-MM-DD format if possible, or original text)
-    - Time (if available)
-    - Category (Diagnosis, Treatment, Symptom, Lab Result, Medication, Administrative, Other)
-    - Summary (Brief title)
-    - Details (Full description from the prose)
-    - Page Number (Integer, extracted from [Page X] markers)
-    - Quote (A short, verbatim text snippet from the description that supports this fact)
-    - umlsEntities (A list of UMLS-based tags extracted from the details, such as "Pain", "Patients", "Diagnosis", "Provider", etc.)
+    The prose contains page citations like [Page X]. You must extract this page number for each fact.
 
-    Here are examples of how to map text to 'umlsEntities' based on UMLS standards:
-    ${umlsExamples}
+    For each Date Entry:
+    - Date: The unified date (YYYY-MM-DD preferred).
+    - Summary: A brief headline summarizing the encounter or day's events.
+    - Facts: An array of specific details.
     
-    Return the result as a JSON array.
+    For each Fact:
+    - Time: If available.
+    - Category: (Diagnosis, Treatment, Symptom, Lab Result, Medication, Administrative, Other)
+    - Detail: The specific fact description.
+    - Page Number: Integer, extracted from [Page X].
+    - Quote: Short verbatim snippet supporting this fact.
+    
+    Extract UMLS keywords at the Date Entry level if possible.
+    
+    Return the result as a JSON array of Date Entries.
   `;
 
   const schema: Schema = {
@@ -134,31 +109,36 @@ export const extractEntitiesFromProse = async (prose: string): Promise<MedicalEn
     items: {
       type: Type.OBJECT,
       properties: {
-        date: { type: Type.STRING, description: "Date of the event in YYYY-MM-DD format if interpretable, otherwise original string." },
-        time: { type: Type.STRING, description: "Time of the event if specified." },
-        category: { 
-          type: Type.STRING, 
-          enum: [
-            EntityCategory.DIAGNOSIS,
-            EntityCategory.TREATMENT,
-            EntityCategory.SYMPTOM,
-            EntityCategory.LAB_RESULT,
-            EntityCategory.MEDICATION,
-            EntityCategory.ADMINISTRATIVE,
-            EntityCategory.OTHER
-          ]
-        },
-        summary: { type: Type.STRING, description: "A concise 3-5 word title for the event." },
-        details: { type: Type.STRING, description: "Detailed description of the event extracted from the text." },
-        pageNumber: { type: Type.INTEGER, description: "The page number (e.g. 1, 2) where this event is located." },
-        quote: { type: Type.STRING, description: "A short verbatim text snippet supporting the event." },
-        umlsEntities: { 
-          type: Type.ARRAY, 
-          items: { type: Type.STRING },
-          description: "List of UMLS entities identified in the event details (e.g. Pain, Patients, Diagnosis)."
+        date: { type: Type.STRING, description: "Date of the events in YYYY-MM-DD format if interpretable." },
+        summary: { type: Type.STRING, description: "A summary headline for this date (e.g. 'Emergency Room Visit' or 'Follow-up Consultation')." },
+        umlsEntities: { type: Type.ARRAY, items: { type: Type.STRING } },
+        facts: {
+          type: Type.ARRAY,
+          items: {
+             type: Type.OBJECT,
+             properties: {
+                time: { type: Type.STRING, description: "Time of the specific fact if available." },
+                category: { 
+                  type: Type.STRING, 
+                  enum: [
+                    EntityCategory.DIAGNOSIS,
+                    EntityCategory.TREATMENT,
+                    EntityCategory.SYMPTOM,
+                    EntityCategory.LAB_RESULT,
+                    EntityCategory.MEDICATION,
+                    EntityCategory.ADMINISTRATIVE,
+                    EntityCategory.OTHER
+                  ]
+                },
+                detail: { type: Type.STRING, description: "The specific fact or event description." },
+                pageNumber: { type: Type.INTEGER, description: "The page number found in the text [Page X]." },
+                quote: { type: Type.STRING, description: "Verbatim quote supporting this fact." }
+             },
+             required: ["category", "detail"]
+          }
         }
       },
-      required: ["date", "category", "summary", "details"]
+      required: ["date", "summary", "facts"]
     }
   };
 

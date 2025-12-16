@@ -18,16 +18,19 @@ export enum EntityCategory {
   OTHER = 'Other'
 }
 
-export interface MedicalEntity {
-  date: string;
+export interface MedicalFact {
   time?: string;
   category: EntityCategory;
-  summary: string;
-  details: string;
-  confidence?: number;
-  umlsEntities?: string[]; // New field for UMLS based entities
-  pageNumber?: number; // The page number where this event occurs
-  quote?: string; // Verbatim text from the document supporting this event
+  detail: string;
+  pageNumber?: number;
+  quote?: string;
+}
+
+export interface MedicalEntity {
+  date: string;
+  summary: string; // High-level summary of the day/encounter
+  facts: MedicalFact[]; // Bulleted list of specific facts
+  umlsEntities?: string[];
 }
 
 export interface ProcessedDocument {
@@ -40,11 +43,22 @@ export interface ProcessedDocument {
   proseDescription?: string;
   entities?: MedicalEntity[];
   error?: string;
-  rawFile?: File; // Kept for potential re-processing or preview, though not strictly persisted
+  rawFile?: File; 
 }
 
 export interface TimelineEvent extends MedicalEntity {
   sourceDocumentId: string;
   sourceDocumentName: string;
-  id: string; // Unique ID for the timeline event
+  id: string; // Unique ID for the timeline event (the daily group)
+}
+
+// Helper type for the viewer interaction
+export interface ViewerItem {
+  date: string;
+  category: string;
+  summary: string; // This will hold the specific fact detail
+  sourceDocumentName: string;
+  sourceDocumentId: string;
+  pageNumber?: number;
+  quote?: string;
 }
