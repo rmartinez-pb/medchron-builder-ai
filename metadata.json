@@ -1,0 +1,5 @@
+{
+  "name": "Medchrons Builder",
+  "description": "An intelligent medical chronology builder that processes documents into detailed prose and structured timelines.",
+  "requestFramePermissions": []
+}
