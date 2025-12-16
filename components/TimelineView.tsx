@@ -40,16 +40,17 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ events, onFactClick,
       <div className="flex justify-between items-center mb-2">
          <h3 className="text-sm font-semibold text-slate-700">Timeline Visualization</h3>
          <div className="flex space-x-2">
-            {prose && (
-              <button 
-                onClick={() => setViewMode(viewMode === 'PROSE' ? 'TIMELINE' : 'PROSE')}
-                className={`text-xs px-3 py-1 rounded-md transition-colors flex items-center border ${
-                  viewMode === 'PROSE' ? 'bg-slate-800 text-white border-slate-800' : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
-                }`}
-              >
-                View Prose Summary
-              </button>
-            )}
+            <button 
+              onClick={() => setViewMode(viewMode === 'PROSE' ? 'TIMELINE' : 'PROSE')}
+              className={`text-xs px-3 py-1 rounded-md transition-colors flex items-center border ${
+                viewMode === 'PROSE' ? 'bg-slate-800 text-white border-slate-800' : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
+              }`}
+            >
+              <svg className="w-3 h-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              View Prose Summary
+            </button>
             <button 
               onClick={() => setViewMode(viewMode === 'JSON' ? 'TIMELINE' : 'JSON')}
               className={`text-xs px-3 py-1 rounded-md transition-colors flex items-center border ${
@@ -74,7 +75,11 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ events, onFactClick,
         <div className="flex-1 overflow-auto bg-white rounded-lg p-6 border border-slate-200 shadow-sm">
            <div className="prose prose-sm max-w-none text-slate-700">
              <h4 className="text-lg font-semibold mb-4 text-slate-800">Document Prose Summary</h4>
-             <div className="whitespace-pre-wrap">{prose}</div>
+             {prose ? (
+               <div className="whitespace-pre-wrap">{prose}</div>
+             ) : (
+               <div className="text-slate-400 italic">No prose summary available for this selection.</div>
+             )}
            </div>
         </div>
       ) : (
