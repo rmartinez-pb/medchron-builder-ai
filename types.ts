@@ -43,20 +43,26 @@ export interface ProcessedDocument {
   proseDescription?: string;
   entities?: MedicalEntity[];
   error?: string;
-  rawFile?: File; 
+  rawFile?: File; // Note: Cannot be persisted to localStorage
+}
+
+export interface MedicalCase {
+  id: string;
+  name: string;
+  createdAt: Date;
+  documents: ProcessedDocument[];
 }
 
 export interface TimelineEvent extends MedicalEntity {
   sourceDocumentId: string;
   sourceDocumentName: string;
-  id: string; // Unique ID for the timeline event (the daily group)
+  id: string; // Unique ID for the timeline event
 }
 
-// Helper type for the viewer interaction
 export interface ViewerItem {
   date: string;
   category: string;
-  summary: string; // This will hold the specific fact detail
+  summary: string;
   sourceDocumentName: string;
   sourceDocumentId: string;
   pageNumber?: number;
