@@ -1,4 +1,5 @@
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { Uploader } from './components/Uploader';
 import { TimelineView } from './components/TimelineView';
@@ -6,53 +7,68 @@ import { Spinner } from './components/Spinner';
 import { ProcessedDocument, ProcessingStatus, TimelineEvent, MedicalFact, ViewerItem, MedicalCase } from './types';
 import { generateDocumentProse, extractEntitiesFromProse } from './services/geminiService';
 import { exportChronologyToDocx } from './services/docxService';
+import { storageService } from './services/storageService';
 
 const CONCURRENCY_LIMIT = 2;
-const STORAGE_KEY = 'medchrons_v1_cases';
+const UI_STATE_KEY = 'medchrons_ui_v1';
 
 const App: React.FC = () => {
-  // State for all cases persisted in LocalStorage
   const [cases, setCases] = useState<MedicalCase[]>([]);
   const [activeCaseId, setActiveCaseId] = useState<string | null>(null);
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
   
-  // Viewer State (Session only, depends on File objects)
   const [viewingItem, setViewingItem] = useState<ViewerItem | null>(null);
   const [viewingDocUrl, setViewingDocUrl] = useState<string | null>(null);
 
-  // 1. Initial Load from LocalStorage
+  // 1. Initial Load from IndexedDB
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
+    const initialize = async () => {
       try {
-        const parsed: MedicalCase[] = JSON.parse(saved);
-        // Revive Date objects
-        const revived = parsed.map(c => ({
-          ...c,
-          createdAt: new Date(c.createdAt),
-          documents: c.documents.map(d => ({
-            ...d,
-            uploadDate: new Date(d.uploadDate)
-          }))
+        // Load data from IndexedDB
+        const loadedCases = await storageService.loadCases();
+        
+        // Load UI state from localStorage (small metadata is fine there)
+        const uiSaved = localStorage.getItem(UI_STATE_KEY);
+        if (uiSaved) {
+          const { activeId, selectedId } = JSON.parse(uiSaved);
+          setActiveCaseId(activeId);
+          setSelectedDocId(selectedId);
+        }
+
+        // Re-hydrate File objects for all documents in all cases
+        const hydratedCases = await Promise.all(loadedCases.map(async (c) => {
+          const hydratedDocs = await Promise.all(c.documents.map(async (d) => {
+            const file = await storageService.getFile(d.id);
+            return { ...d, rawFile: file || undefined };
+          }));
+          return { ...c, documents: hydratedDocs };
         }));
-        setCases(revived);
+
+        setCases(hydratedCases);
       } catch (e) {
-        console.error("Failed to load cases", e);
+        console.error("Initialization failed", e);
+      } finally {
+        setIsInitialized(true);
       }
-    }
+    };
+    initialize();
   }, []);
 
-  // 2. Persistence to LocalStorage (efficiently stripping non-serializable File objects)
+  // 2. Persistence to IndexedDB
+  // Guarded by isInitialized to prevent overwriting with [] on boot
   useEffect(() => {
-    const storageData = cases.map(c => ({
-      ...c,
-      documents: c.documents.map(({ rawFile, ...rest }) => rest)
+    if (!isInitialized) return;
+    storageService.saveCases(cases);
+    
+    // Save UI state
+    localStorage.setItem(UI_STATE_KEY, JSON.stringify({
+      activeId: activeCaseId,
+      selectedId: selectedDocId
     }));
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(storageData));
-  }, [cases]);
+  }, [cases, activeCaseId, selectedDocId, isInitialized]);
 
-  // Derive Active Data
   const activeCase = useMemo(() => 
     cases.find(c => c.id === activeCaseId) || null
   , [cases, activeCaseId]);
@@ -71,9 +87,8 @@ const App: React.FC = () => {
       );
   }, [activeCase]);
 
-  // Queue Processing Loop
   useEffect(() => {
-    if (!activeCaseId) return;
+    if (!activeCaseId || !isInitialized) return;
     const currentCase = cases.find(c => c.id === activeCaseId);
     if (!currentCase) return;
 
@@ -88,7 +103,7 @@ const App: React.FC = () => {
         processDocument(activeCaseId, nextDoc.id, nextDoc.rawFile);
       }
     }
-  }, [cases, activeCaseId]);
+  }, [cases, activeCaseId, isInitialized]);
 
   const processDocument = async (caseId: string, docId: string, file: File) => {
     const updateDoc = (status: ProcessingStatus, updates: Partial<ProcessedDocument> = {}) => {
@@ -129,17 +144,22 @@ const App: React.FC = () => {
     setActiveCaseId(newCase.id);
   };
 
-  const handleFilesSelected = useCallback((files: File[]) => {
+  const handleFilesSelected = useCallback(async (files: File[]) => {
     if (!activeCaseId) return;
 
-    const newDocs: ProcessedDocument[] = files.map(file => ({
-      id: uuidv4(),
-      name: file.name,
-      type: file.type,
-      size: file.size,
-      uploadDate: new Date(),
-      status: ProcessingStatus.QUEUED,
-      rawFile: file
+    const newDocs: ProcessedDocument[] = await Promise.all(files.map(async (file) => {
+      const id = uuidv4();
+      // Save binary to IndexedDB immediately
+      await storageService.saveFile(id, file);
+      return {
+        id,
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        uploadDate: new Date(),
+        status: ProcessingStatus.QUEUED,
+        rawFile: file
+      };
     }));
 
     setCases(prev => prev.map(c => 
@@ -147,11 +167,21 @@ const App: React.FC = () => {
     ));
   }, [activeCaseId]);
 
-  const handleDeleteCase = (e: React.MouseEvent, id: string) => {
+  const handleDeleteCase = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     if (confirm("Delete this case and all extracted chronology data?")) {
+      const targetCase = cases.find(c => c.id === id);
+      if (targetCase) {
+        // Cleanup binary files from IndexedDB
+        for (const doc of targetCase.documents) {
+          await storageService.deleteFile(doc.id);
+        }
+      }
       setCases(prev => prev.filter(c => c.id !== id));
-      if (activeCaseId === id) setActiveCaseId(null);
+      if (activeCaseId === id) {
+        setActiveCaseId(null);
+        setSelectedDocId(null);
+      }
     }
   };
 
@@ -159,7 +189,6 @@ const App: React.FC = () => {
     if (!activeCase) return;
     const sourceDoc = activeCase.documents.find(d => d.id === parentEvent.sourceDocumentId);
     
-    // Check if we have the file in current session
     if (sourceDoc && sourceDoc.rawFile) {
       if (viewingDocUrl) URL.revokeObjectURL(viewingDocUrl);
       setViewingDocUrl(URL.createObjectURL(sourceDoc.rawFile));
@@ -173,7 +202,7 @@ const App: React.FC = () => {
         quote: fact.quote
       });
     } else {
-      alert("Source file is not in browser memory. To use the viewer, please re-upload the file to this case.");
+      alert("Source file could not be retrieved from storage.");
     }
   };
 
@@ -196,11 +225,19 @@ const App: React.FC = () => {
     }
   };
 
+  if (!isInitialized) {
+    return (
+      <div className="h-screen w-screen flex flex-col items-center justify-center bg-slate-50">
+        <Spinner className="h-12 w-12 text-medical-600 mb-4" />
+        <p className="text-slate-500 font-bold animate-pulse">Initializing Medical Vault...</p>
+      </div>
+    );
+  }
+
   const selectedDocument = activeCase?.documents.find(d => d.id === selectedDocId);
 
   return (
     <div className="flex h-screen bg-slate-50 font-sans">
-      {/* Sidebar */}
       <aside className="w-80 bg-white border-r border-slate-200 flex flex-col shadow-xl z-20 overflow-hidden">
         <div className="p-5 border-b border-slate-100 flex items-center space-x-3">
           <div className="w-10 h-10 bg-medical-600 rounded-xl flex items-center justify-center text-white shadow-lg">
@@ -247,11 +284,6 @@ const App: React.FC = () => {
                   </div>
                 </div>
               ))}
-              {cases.length === 0 && (
-                <div className="text-center py-12 px-4 border-2 border-dashed border-slate-200 rounded-xl">
-                  <p className="text-sm text-slate-400">No cases yet. Create your first medical chronology case.</p>
-                </div>
-              )}
             </div>
           ) : (
             <div className="space-y-4">
@@ -298,7 +330,6 @@ const App: React.FC = () => {
         </div>
       </aside>
 
-      {/* Main Panel */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
         {activeCase ? (
           <>
@@ -328,12 +359,6 @@ const App: React.FC = () => {
               </div>
 
               <div className="flex items-center space-x-6">
-                {!selectedDocId && activeCase.documents.length > 0 && (
-                   <div className="hidden lg:flex items-center space-x-2 px-3 py-1.5 bg-medical-50 border border-medical-100 rounded-lg">
-                      <svg className="w-4 h-4 text-medical-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
-                      <span className="text-xs font-bold text-medical-700">Combined View</span>
-                   </div>
-                )}
                 <div className="text-right hidden sm:block">
                   <div className="text-xs font-bold text-slate-700">
                     {selectedDocument 
@@ -368,7 +393,6 @@ const App: React.FC = () => {
                 </div>
               </div>
 
-              {/* Viewer Side Panel */}
               {viewingItem && viewingDocUrl && (
                 <div className="absolute inset-y-0 right-0 w-[45%] bg-white shadow-2xl border-l border-slate-200 z-50 flex flex-col animate-in slide-in-from-right duration-300">
                   <div className="p-5 border-b border-slate-100 bg-slate-50/80 backdrop-blur-md sticky top-0">
