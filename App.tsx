@@ -303,18 +303,37 @@ const App: React.FC = () => {
         {activeCase ? (
           <>
             <header className="h-20 bg-white border-b border-slate-200 flex items-center justify-between px-8 shrink-0 z-10">
-              <div className="min-w-0">
-                <div className="flex items-center space-x-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
-                  <span>Case View</span>
-                  <svg className="w-2 h-2" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" /></svg>
-                  <span className="text-medical-600">{selectedDocId ? 'Single Document' : 'Master Chronology'}</span>
+              <div className="min-w-0 flex items-center space-x-4">
+                {selectedDocId && (
+                  <button 
+                    onClick={() => setSelectedDocId(null)}
+                    className="p-2 bg-slate-50 hover:bg-medical-50 border border-slate-200 hover:border-medical-200 rounded-lg text-medical-600 transition-all shadow-sm group active:scale-95"
+                    title="Return to Master Chronology"
+                  >
+                    <svg className="w-5 h-5 group-hover:-translate-x-0.5 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
+                    </svg>
+                  </button>
+                )}
+                <div className="min-w-0">
+                  <div className="flex items-center space-x-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
+                    <span>Case View</span>
+                    <svg className="w-2 h-2" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" /></svg>
+                    <span className="text-medical-600">{selectedDocId ? 'Single Document' : 'Master Chronology'}</span>
+                  </div>
+                  <h2 className="text-xl font-extrabold text-slate-800 truncate">
+                    {selectedDocument ? selectedDocument.name : activeCase.name}
+                  </h2>
                 </div>
-                <h2 className="text-xl font-extrabold text-slate-800 truncate">
-                  {selectedDocument ? selectedDocument.name : activeCase.name}
-                </h2>
               </div>
 
               <div className="flex items-center space-x-6">
+                {!selectedDocId && activeCase.documents.length > 0 && (
+                   <div className="hidden lg:flex items-center space-x-2 px-3 py-1.5 bg-medical-50 border border-medical-100 rounded-lg">
+                      <svg className="w-4 h-4 text-medical-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
+                      <span className="text-xs font-bold text-medical-700">Combined View</span>
+                   </div>
+                )}
                 <div className="text-right hidden sm:block">
                   <div className="text-xs font-bold text-slate-700">
                     {selectedDocument 
