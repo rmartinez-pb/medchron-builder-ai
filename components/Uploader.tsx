@@ -1,3 +1,4 @@
+
 import React, { useRef } from 'react';
 
 interface UploaderProps {
@@ -22,7 +23,7 @@ export const Uploader: React.FC<UploaderProps> = ({ onFilesSelected, disabled })
       <input
         type="file"
         multiple
-        accept="application/pdf,image/*"
+        accept="application/pdf,image/*,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx"
         onChange={handleFileChange}
         className="hidden"
         id="file-upload"
@@ -41,7 +42,7 @@ export const Uploader: React.FC<UploaderProps> = ({ onFilesSelected, disabled })
         <div className="text-sm text-slate-600">
           <span className="font-semibold text-blue-600 hover:text-blue-700">Click to upload</span> or drag and drop
         </div>
-        <p className="text-xs text-slate-500">PDF, PNG, JPG (MAX. 10MB)</p>
+        <p className="text-xs text-slate-500">PDF, DOCX, PNG, JPG (MAX. 10MB)</p>
       </label>
     </div>
   );
