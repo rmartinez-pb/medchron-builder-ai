@@ -3,7 +3,7 @@ import { MedicalEntity, EntityCategory } from "../types";
 
 // Initialize Gemini Client
 // NOTE: API_KEY is injected by the environment.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const ai = new GoogleGenAI({ apiKey: "AIzaSyCZ9M0mUHsrjC57gPoap72IoiWw3Gc8328" });
 
 /**
  * Converts a File object to a Base64 string.
